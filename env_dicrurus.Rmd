@@ -143,28 +143,32 @@ colnames(gbif)=c("SciName","Subspecies","Long","Lat","Country","Month")
 gbif=gbif%>%
   dplyr::select(SciName,Subspecies,Long,Lat)
 
+gbif$Source="GBIF"
+
 write_csv(gbif,paste0(filepath,"combined_data.csv"))
 ```
 
 # Population assignation
 
-Ensure that populations are correctly assigned. This is where things get tricky! Note that specimens are likely correctly attributed.
+Ensure that populations are correctly assigned. Many taxa have holdover from past taxonomic treatises. The study is following the phylogeny of Fuchs et al., which has been largely adopted by Birds of the World. Thus, we are correcting taxonomy to Birds of the World 2022. This is where things get tricky! Note that specimens are likely correctly attributed, so we are leaving them alone.
 
 ```{r}
 data=read_csv(paste0(filepath,"combined_data.csv"))
 
-data$SciName=as.factor(data$SciName)
-data$Subspecies=as.factor(data$Subspecies)
-summary(data)
+#data$SciName=as.factor(data$SciName)
+#data$Subspecies=as.factor(data$Subspecies)
+#summary(data)
 ```
 
 ```{r}
 unique(data$SciName)
 ```
 
-Looks like all twelve species are here. We need to make sure we have all species ascribed correctly.
+Looks like the main study species are present.
 
 ```{r}
+# plot species in dataset
+
 species.plotter=function(sciname,data){
   data2=data%>%
     filter(SciName==sciname)%>%
@@ -176,6 +180,19 @@ species.plotter=function(sciname,data){
   points(data2,col="black",pch=19)
 }
 ```
+
+```{r}
+# load range shapefiles
+
+shps=paste0(filepath,"ssp_shp/",list.files(paste0(filepath,"ssp_shp/"),pattern="*.shp"))
+```
+
+```{r}
+# remove birds with no species assigned
+data=data[-which(is.na(data$SciName)),]
+```
+
+
 
 ## *Dicrurus occidentalis*
 
@@ -269,29 +286,489 @@ summary(data$Subspecies[data$SciName%like%"adsimilis"])
 
 Most of these are NA; we need to correct them to subspecies.
 
+```{r}
+species.plotter("Dicrurus adsimilis",data=data)
+```
 
+Looks like a lot of different taxa are mixed together here.
+
+```{r}
+adsimilis=shps[shps%like%'adsimilis']
+
+divaricatus=shps[shps%like%'divaricatus']
+
+tst.shp=c(adsimilis,divaricatus)
+```
+
+GBIF data includes some specimens, but it's not *our* verified specimens, so subjecting all to reclassification.
+
+```{r}
+summary(data$SciName)
+```
+
+
+```{r}
+data2=data%>%filter(SciName=="Dicrurus adsimilis")
+data=data%>%filter(SciName!="Dicrurus adsimilis")
+
+# for taxon "adsimilis"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+
+data2$SciName[which(data2$Subspecies=="divaricatus")]="Dicrurus divaricatus"
+data2$SciName[which(data2$Subspecies=="lugubris")]="Dicrurus divaricatus"
+
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
+
+```{r}
+species.plotter("Dicrurus adsimilis",data=data)
+```
+
+Mutch better map for this group.
 
 ## *Dicrurus divaricatus*
 
+Similar to the above, we need to group these together by subspecies as well. Similar to the above, birds near contact zones are not assigned and are removed.
+
+```{r}
+species.plotter(data=data,sciname = "Dicrurus divaricatus")
+```
+
+Now to assign these to subspecies as well.
+
+```{r}
+tst.shp=shps[which(shps%like%"divaricatus")]
+
+data2=data%>%filter(SciName=="Dicrurus divaricatus")
+data=data%>%filter(SciName!="Dicrurus divaricatus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
+
 ## *Dicrurus atactus*
+
+```{r}
+species.plotter(data=data,sciname = "Dicrurus atactus")
+```
+
+All these records look correct.
 
 ## *Dicrurus modestus*
 
+```{r}
+species.plotter(data=data,sciname = "Dicrurus modestus")
+```
+
+
+We also need these to be assigned to population.
+
+```{r}
+tst.shp=shps[shps%like%'modestus']
+```
+
+```{r}
+data2=data%>%filter(SciName=="Dicrurus modestus")
+data=data%>%filter(SciName!="Dicrurus modestus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+
+data2=na.omit(data2)
+
+data2$SciName[which(data2$Subspecies=="atactus")]="Dicrurus atactus"
+
+data=rbind(data,data2)%>%unique()
+```
+
+```{r}
+species.plotter(data=data,sciname="Dicrurus modestus")
+```
+
 ## *Dicrurus aldabranus*
+
+Excluded from this study.
+
+```{r}
+data=data%>%
+  filter(SciName!="Dicrurus aldabranus")
+```
+
 
 ## *Dicrurus fuscipennis*
 
+Excluded from this study.
+
+```{r}
+data=data%>%
+  filter(SciName!="Dicrurus fuscipennis")
+```
+
+
 ## *Dicrurus forficatus*
+
+Restrict to nominate, mainland Madagascar.
+
+```{r}
+tst.shp=shps[shps%like%'forficatus']
+
+data2=data%>%filter(SciName=="Dicrurus forficatus")
+data=data%>%filter(SciName!="Dicrurus forficatus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
+
+
+```{r}
+species.plotter(data=data,sciname = "Dicrurus forficatus")
+```
+
 
 ## *Dicrurus waldenii*
 
+Excluded from study.
+
+```{r}
+data=data%>%
+  filter(SciName!="Dicrurus waldenii")
+```
+
+## Save data
+
+```{r}
+colnames(data)=c('Species','Subspecies',
+                 'Long','Lat','Source')
+
+write_csv(data,paste0(filepath,"reassigned_data.csv"))
+```
+
 # Extract Environmental Data
+
+```{r}
+data=read_csv(paste0(filepath,"reassigned_data.csv"))
+```
+
+First, a quick preview of distributions:
+
+```{r}
+plot(ocean,col="#A6BBFF",xlim=xlim*1.1,ylim=ylim*1.1)
+points(data[,c('Long','Lat')],col=as.factor(data$SciName),pch=20)
+```
 
 ```{r}
 env_layers=paste0(gis,"ENVIREM_30arcsec/",
   list.files(paste0(gis,"ENVIREM_30arcsec/"),pattern="*.bil"))
 
 # remove set count files
+env_layers=env_layers[-which(env_layers%like%"growing")]
+env_layers=env_layers[-which(env_layers%like%"Count")]
+```
 
+```{r,eval=F}
+y=stack(env_layers)
+
+coords=data%>%
+  dplyr::select(Long,Lat)
+
+env_vals=raster::extract(x=y,y=coords)
+
+data=cbind(data,env_vals)
+
+write_csv(data,paste0(filepath,"env_extracts.csv"))
+```
+
+# Ecological Niche Modeling
+
+Using the pipeline of MVEs, we can create niche models for all of these species.
+
+Define functions.
+
+```{r}
+data=read_csv(paste0(filepath,"env_extracts.csv"))
+```
+
+
+```{r}
+#MAJA function
+maja=function(p,m,s)((p-m)%*%s%*%t(p-m))^0.5
+
+#Quantile function
+##Double check function? divide by 1 is 1...
+##changed to 4, for quantiles
+NDquantil=function(nD,level){
+  return(round(nD*level))
+}
+```
+
+```{r,eval=F,echo=F}
+ssp="Dicrurus atactus"
+ssp.text="Dicrurus_atactus"
+data=data
+model_files=env_layers
+```
+```{r}
+# altered to fit this dataset; needs more tinkering to be function.
+
+ssp.plot=function(ssp,ssp.text,data,model_files){
+  y=stack(model_files)
+  
+  vals=data%>%
+    filter(Species==ssp)%>%
+    # remove character fields
+    dplyr::select(-Species,-Subspecies,
+                  # remove coordinates
+                  -Long,-Lat,-Source)%>%
+                  # remove extraneous ENVIREM
+                  # not needed for now
+                  #-`current_2-5arcmin_tri`,
+                  #-`current_2-5arcmin_continentality`,
+                  #-`current_2-5arcmin_growingDegDays0`,
+                  #-`current_2-5arcmin_growingDegDays5`,
+                  #-`current_2-5arcmin_maxTempColdest`,
+                  #-`current_2-5arcmin_monthCountByTemp10`,
+                  #-`current_2-5arcmin_PETColdestQuarter`,
+                  #-`current_2-5arcmin_PETseasonality`,
+                  #-`current_2-5arcmin_thermicityIndex`)%>%
+    # remove NA values
+    na.omit()%>%
+    # get unique - presence only for each site
+    # uniform representation across presences
+    unique()
+  
+  coords.vals=data%>%
+    filter(Species==ssp)%>%
+    # remove character fields
+    dplyr::select(Long,Lat)%>%
+    # get unique - presence only for each site
+    # uniform representation across presences
+    unique()
+  
+  n1=NDquantil(nrow(vals),0.9)
+
+  mve1=cov.mve(vals,quantile.use=n1)
+
+  nc=ncell(y)
+  
+  # these specific files are divisible by 4
+  
+  # break up into four sections
+  
+  mu1=matrix(mve1$center,nrow=1)
+  s1=mve1$cov
+  invs1=solve(s1)
+
+  # break up over giant raster
+  
+  mu2=as.matrix(mu1)
+  invs2=as.matrix(invs1)
+  
+  dT1=matrix(0,ncol=1,nrow=nc)
+  
+  for(ii in 1:8){
+    index=((1:(nc/8))+(nc*(ii-1)))
+    # load cells
+    
+    valsT=raster::extract(x=y,
+                          y=index)
+    #Create current models
+    valsT1=as.matrix(valsT)
+    
+    for(j in 1:nrow(valsT1)){
+      dT1[j,1]=maja(valsT1[j,],mu2,invs2)
+    }
+  }
+  
+  q=raster(nrow=nrow(y),ncol=ncol(y),
+         ext=extent(y),resolution=res(y),vals=dT1)
+  setwd(paste0(filepath,'MVEs/raw_mve/'))
+  #sp1=strsplit(sp,'[.]')[[1]][1]
+  sp1=ssp.text
+  writeRaster(q,filename=sp1,format='ascii',overwrite=T)
+  plot(q)
+  
+  ext=raster::extract(x=q,y=coords.vals)
+  ext2=na.omit(ext)
+
+  #Remove the furthest 20% to reflect issues with plotting in eBird
+  #threshold based on these values
+  
+  ext2=ext2[order(ext2)]
+  cutoff=round(0.8*length(ext2))
+  ext3=ext2[1:cutoff]
+  
+  ##The following sets binary presence to everything above 1.5 sd below mean of occurrence
+  #n=max(ext2)
+  #ND=(round(n*0.95))
+  #m=c(NA,NA,NA,0,ND,1,ND,Inf,0)
+  #m=matrix(m,ncol=3,byrow=T)
+  #rc=reclassify(q,m)
+  #y2=y[which(ext>ND),]
+
+  #Everything up to 1.5 sd above the mean included
+
+  #ext2
+  sdext=sd(ext3)
+  mext=mean(ext3)
+  ND=mext+1.5*sdext
+  m=c(NA,NA,NA,0,ND,1,ND,Inf,0)
+  
+  # free memory
+  rm(valsT)
+  rm(valsT1)
+  rm(dT1)
+  rm(vals)
+  
+  #Current threshold
+  ##Used only here; heirarchical for other parts
+  
+  m=matrix(m,ncol=3,byrow=T)
+  rc=reclassify(q,m)
+  
+  # ensure there is data for writing later
+  #y2=y[which(ext>ND),]
+
+  #Create color threshold for past models
+  #color change for every standard deviation
+  
+  #New threshold on current conditions, then hierarchical
+  #Created here, executed further down
+  
+  m2=m
+  
+  m=c(NA,NA,NA,
+      0,(mext+(1.5*sdext)),1,
+      (mext+(1.5*sdext)),(mext+(3*sdext)),2,
+      (mext+(3*sdext)),(mext+(6*sdext)),3,
+      (mext+(6*sdext)),(mext+(12*sdext)),4,
+      (mext+(12*sdext)),(mext+(24*sdext)),5,
+      (mext+(24*sdext)),Inf,6)
+  
+  m=matrix(m,ncol=3,byrow=T)
+  
+  species=ssp.text
+
+  #if(nrow(y2)!=0){
+    #setwd(paste0(filepath,"MVEs/threshold_mve/"))
+    #write.csv(y2,file=paste0(species,'_out.csv'),quote=F,row.names=F)
+  #}
+  pathway=paste0(filepath,"MVEs/threshold_mve/",
+                 species,".asc",sep="")
+  writeRaster(rc,pathway,overwrite=T)
+  
+  xlim=c(min(coords.vals$Long)-4,
+         max(coords.vals$Long)+4)
+  ylim=c(min(coords.vals$Lat)-4,
+         max(coords.vals$Lat)+4)
+  
+  plot(rc,xlim=xlim,ylim=ylim)
+  points(coords.vals,pch=19,col="black")
+
+  #threshold classify tier
+  thresh=reclassify(q,m)
+  pathway=paste0(filepath,"MVEs/threshold_mve/",
+                 species,"-tier.asc",sep="")
+  writeRaster(thresh,pathway,overwrite=T)
+  plot(thresh,
+       xlim=xlim,ylim=ylim)
+  rm(thresh)
+  
+  #Create color bands of how far it is from center
+  
+  ### For now, no past climate models.
+}
+```
+
+```{r,eval=F}
+ssp.plot(ssp = "Dicrurus atactus",
+         ssp.text = "Dicrurus_atactus",
+         data=data,
+         model_files = env_layers)
 ```
 

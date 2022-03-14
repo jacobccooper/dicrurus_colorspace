@@ -22,6 +22,9 @@ library(maptools)
     ## Loading required package: sp
 
     ## Checking rgeos availability: TRUE
+    ## Please note that 'maptools' will be retired by the end of 2023,
+    ## plan transition at your earliest convenience;
+    ## some functionality will be moved to 'sp'.
 
 ``` r
 library(MASS)
@@ -31,9 +34,13 @@ library(raster)
     ## 
     ## Attaching package: 'raster'
 
-    ## The following object is masked from 'package:MASS':
+    ## The following objects are masked from 'package:MASS':
     ## 
-    ##     select
+    ##     area, select
+
+    ## The following object is masked from 'package:data.table':
+    ## 
+    ##     shift
 
 ``` r
 library(rnaturalearth)
@@ -47,11 +54,12 @@ library(rgdal)
     ## 
     ## rgdal: version: 1.5-28, (SVN revision 1158)
     ## Geospatial Data Abstraction Library extensions to R successfully loaded
-    ## Loaded GDAL runtime: GDAL 3.0.4, released 2020/01/28
+    ## Loaded GDAL runtime: GDAL 3.3.2, released 2021/09/01
     ## Path to GDAL shared files: /usr/share/gdal
     ## GDAL binary built with GEOS: TRUE 
-    ## Loaded PROJ runtime: Rel. 6.3.1, February 10th, 2020, [PJ_VERSION: 631]
-    ## Path to PROJ shared files: /usr/share/proj
+    ## Loaded PROJ runtime: Rel. 7.2.1, January 1st, 2021, [PJ_VERSION: 721]
+    ## Path to PROJ shared files: /home/kupeornis/.local/share/proj:/usr/share/proj
+    ## PROJ CDN enabled: FALSE
     ## Linking to sp version:1.4-6
     ## To mute warnings of possible GDAL/OSR exportToProj4() degradation,
     ## use options("rgdal_show_exportToProj4_warnings"="none") before loading sp or rgdal.
@@ -60,7 +68,7 @@ library(rgdal)
 library(sf)
 ```
 
-    ## Linking to GEOS 3.8.0, GDAL 3.0.4, PROJ 6.3.1
+    ## Linking to GEOS 3.9.1, GDAL 3.3.2, PROJ 7.2.1; sf_use_s2() is TRUE
 
 ``` r
 library(tidyverse)
@@ -68,7 +76,7 @@ library(tidyverse)
 
     ## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.1 ──
 
-    ## ✓ tibble  3.1.6     ✓ dplyr   1.0.8
+    ## ✓ tibble  3.1.4     ✓ dplyr   1.0.7
     ## ✓ tidyr   1.2.0     ✓ stringr 1.4.0
     ## ✓ readr   2.1.2     ✓ forcats 0.5.1
     ## ✓ purrr   0.3.4
@@ -104,7 +112,7 @@ ocean=readOGR(paste0(gis,"ne_10m_ocean/ne_10m_ocean.shp"))
 ```
 
     ## OGR data source with driver: ESRI Shapefile 
-    ## Source: "/home/j141c380/Dropbox/GIS/ne_10m_ocean/ne_10m_ocean.shp", layer: "ne_10m_ocean"
+    ## Source: "/home/kupeornis/Dropbox/GIS/ne_10m_ocean/ne_10m_ocean.shp", layer: "ne_10m_ocean"
     ## with 1 features
     ## It has 3 fields
 
@@ -113,7 +121,7 @@ lakes=readOGR(paste0(gis,"ne_10m_lakes/ne_10m_lakes.shp"))
 ```
 
     ## OGR data source with driver: ESRI Shapefile 
-    ## Source: "/home/j141c380/Dropbox/GIS/ne_10m_lakes/ne_10m_lakes.shp", layer: "ne_10m_lakes"
+    ## Source: "/home/kupeornis/Dropbox/GIS/ne_10m_lakes/ne_10m_lakes.shp", layer: "ne_10m_lakes"
     ## with 1354 features
     ## It has 37 fields
     ## Integer64 fields read as strings:  scalerank ne_id
@@ -124,7 +132,7 @@ specimen.xy=readOGR(paste0(filepath,"dicrurus.gpkg"))
 ```
 
     ## OGR data source with driver: GPKG 
-    ## Source: "/home/j141c380/Dropbox/Manuscripts/Dicrurus/dicrurus.gpkg", layer: "dicrurus"
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/dicrurus.gpkg", layer: "dicrurus"
     ## with 147 features
     ## It has 11 fields
 
@@ -266,65 +274,54 @@ colnames(gbif)=c("SciName","Subspecies","Long","Lat","Country","Month")
 gbif=gbif%>%
   dplyr::select(SciName,Subspecies,Long,Lat)
 
+gbif$Source="GBIF"
+
 write_csv(gbif,paste0(filepath,"combined_data.csv"))
 ```
 
 # Population assignation
 
-Ensure that populations are correctly assigned. This is where things get
-tricky! Note that specimens are likely correctly attributed.
+Ensure that populations are correctly assigned. Many taxa have holdover
+from past taxonomic treatises. The study is following the phylogeny of
+Fuchs et al., which has been largely adopted by Birds of the World.
+Thus, we are correcting taxonomy to Birds of the World 2022. This is
+where things get tricky! Note that specimens are likely correctly
+attributed, so we are leaving them alone.
 
 ``` r
 data=read_csv(paste0(filepath,"combined_data.csv"))
 ```
 
-    ## Rows: 18129 Columns: 4
+    ## Rows: 18129 Columns: 5
     ## ── Column specification ────────────────────────────────────────────────────────
     ## Delimiter: ","
-    ## chr (2): SciName, Subspecies
+    ## chr (3): SciName, Subspecies, Source
     ## dbl (2): Long, Lat
     ## 
     ## ℹ Use `spec()` to retrieve the full column specification for this data.
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
-data$SciName=as.factor(data$SciName)
-data$Subspecies=as.factor(data$Subspecies)
-summary(data)
+#data$SciName=as.factor(data$SciName)
+#data$Subspecies=as.factor(data$Subspecies)
+#summary(data)
 ```
-
-    ##                 SciName            Subspecies         Long       
-    ##  Dicrurus adsimilis :15243   adsimilis  :  629   Min.   :-17.43  
-    ##  Dicrurus ludwigii  : 1017   divaricatus:  180   1st Qu.: 22.60  
-    ##  Dicrurus forficatus:  854   apivorus   :  138   Median : 30.59  
-    ##  Dicrurus atactus   :  320   fugax      :  113   Mean   : 26.29  
-    ##  Dicrurus modestus  :  259   forficatus :   63   3rd Qu.: 35.30  
-    ##  (Other)            :  428   (Other)    :  132   Max.   : 50.10  
-    ##  NA's               :    8   NA's       :16874                   
-    ##       Lat        
-    ##  Min.   :-34.83  
-    ##  1st Qu.:-25.16  
-    ##  Median :-17.92  
-    ##  Mean   :-13.50  
-    ##  3rd Qu.: -1.57  
-    ##  Max.   : 16.53  
-    ## 
 
 ``` r
 unique(data$SciName)
 ```
 
-    ##  [1] Dicrurus adsimilis    Dicrurus modestus     Dicrurus atripennis  
-    ##  [4] Dicrurus ludwigii     Dicrurus forficatus   Dicrurus waldenii    
-    ##  [7] Dicrurus sharpei      Dicrurus occidentalis Dicrurus atactus     
-    ## [10] Dicrurus hottentottus <NA>                  Dicrurus fuscipennis 
-    ## [13] Dicrurus megarhynchus Dicrurus elgonensis  
-    ## 13 Levels: Dicrurus adsimilis Dicrurus atactus ... Dicrurus waldenii
+    ##  [1] "Dicrurus adsimilis"    "Dicrurus modestus"     "Dicrurus atripennis"  
+    ##  [4] "Dicrurus ludwigii"     "Dicrurus forficatus"   "Dicrurus waldenii"    
+    ##  [7] "Dicrurus sharpei"      "Dicrurus occidentalis" "Dicrurus atactus"     
+    ## [10] "Dicrurus hottentottus" NA                      "Dicrurus fuscipennis" 
+    ## [13] "Dicrurus megarhynchus" "Dicrurus elgonensis"
 
-Looks like all twelve species are here. We need to make sure we have all
-species ascribed correctly.
+Looks like the main study species are present.
 
 ``` r
+# plot species in dataset
+
 species.plotter=function(sciname,data){
   data2=data%>%
     filter(SciName==sciname)%>%
@@ -335,6 +332,17 @@ species.plotter=function(sciname,data){
   plot(lakes,col="#A6BBFF",add=T)
   points(data2,col="black",pch=19)
 }
+```
+
+``` r
+# load range shapefiles
+
+shps=paste0(filepath,"ssp_shp/",list.files(paste0(filepath,"ssp_shp/"),pattern="*.shp"))
+```
+
+``` r
+# remove birds with no species assigned
+data=data[-which(is.na(data$SciName)),]
 ```
 
 ## *Dicrurus occidentalis*
@@ -351,7 +359,7 @@ There is nothing ascribed to the subspecies *occidentalis*.
 species.plotter(data=data,sciname="Dicrurus occidentalis")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 All individuals are within the range of *D. occidentalis*.
 
@@ -361,28 +369,28 @@ All individuals are within the range of *D. occidentalis*.
 data[which(data$Subspecies%like%"sharpei"),]
 ```
 
-    ## # A tibble: 19 × 4
-    ##    SciName           Subspecies   Long    Lat
-    ##    <fct>             <fct>       <dbl>  <dbl>
-    ##  1 Dicrurus ludwigii sharpei     13.3  -3.68 
-    ##  2 Dicrurus ludwigii sharpei    -13.6   9.89 
-    ##  3 Dicrurus ludwigii sharpei     12.7  -0.812
-    ##  4 Dicrurus ludwigii sharpei     -5.03  7.69 
-    ##  5 Dicrurus ludwigii sharpei     -5.03  6.22 
-    ##  6 Dicrurus ludwigii sharpei     -9.29  8.38 
-    ##  7 Dicrurus ludwigii sharpei    -16.5  12.5  
-    ##  8 Dicrurus ludwigii sharpei     13.6  -1.63 
-    ##  9 Dicrurus ludwigii sharpei     18.6   4.36 
-    ## 10 Dicrurus ludwigii sharpei     34.9   0.27 
-    ## 11 Dicrurus ludwigii sharpei     12.0   2.97 
-    ## 12 Dicrurus ludwigii sharpei     34.9   0.27 
-    ## 13 Dicrurus ludwigii sharpei     34.9   0.27 
-    ## 14 Dicrurus ludwigii sharpei     -5.63  9.45 
-    ## 15 Dicrurus ludwigii sharpei     24.6   5.58 
-    ## 16 Dicrurus ludwigii sharpei     -5.63  9.45 
-    ## 17 Dicrurus ludwigii sharpei     30.7   1.75 
-    ## 18 Dicrurus ludwigii sharpei     30.5   1.92 
-    ## 19 Dicrurus ludwigii sharpei      8.40  9.61
+    ## # A tibble: 19 × 5
+    ##    SciName           Subspecies   Long    Lat Source
+    ##    <chr>             <chr>       <dbl>  <dbl> <chr> 
+    ##  1 Dicrurus ludwigii sharpei     13.3  -3.68  GBIF  
+    ##  2 Dicrurus ludwigii sharpei    -13.6   9.89  GBIF  
+    ##  3 Dicrurus ludwigii sharpei     12.7  -0.812 GBIF  
+    ##  4 Dicrurus ludwigii sharpei     -5.03  7.69  GBIF  
+    ##  5 Dicrurus ludwigii sharpei     -5.03  6.22  GBIF  
+    ##  6 Dicrurus ludwigii sharpei     -9.29  8.38  GBIF  
+    ##  7 Dicrurus ludwigii sharpei    -16.5  12.5   GBIF  
+    ##  8 Dicrurus ludwigii sharpei     13.6  -1.63  GBIF  
+    ##  9 Dicrurus ludwigii sharpei     18.6   4.36  GBIF  
+    ## 10 Dicrurus ludwigii sharpei     34.9   0.27  GBIF  
+    ## 11 Dicrurus ludwigii sharpei     12.0   2.97  GBIF  
+    ## 12 Dicrurus ludwigii sharpei     34.9   0.27  GBIF  
+    ## 13 Dicrurus ludwigii sharpei     34.9   0.27  GBIF  
+    ## 14 Dicrurus ludwigii sharpei     -5.63  9.45  GBIF  
+    ## 15 Dicrurus ludwigii sharpei     24.6   5.58  GBIF  
+    ## 16 Dicrurus ludwigii sharpei     -5.63  9.45  GBIF  
+    ## 17 Dicrurus ludwigii sharpei     30.7   1.75  GBIF  
+    ## 18 Dicrurus ludwigii sharpei     30.5   1.92  GBIF  
+    ## 19 Dicrurus ludwigii sharpei      8.40  9.61  GBIF
 
 There are several misclassified *D. ludwigii* still.
 
@@ -397,7 +405,7 @@ data[index,"Subspecies"]=NA
 species.plotter(data=data,sciname="Dicrurus sharpei")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
 
 There are lots of erroneous western records, which refer to *D.
 occidentalis*.
@@ -421,8 +429,7 @@ This species consists of the following subspecies:
 unique(data$Subspecies[data$SciName%like%"ludwigii"])
 ```
 
-    ## [1] <NA>         ludwigii     muenzneri    tephrogaster
-    ## 15 Levels: adsimilis apivorus atactus coracinus divaricatus ... ugandensis
+    ## [1] NA             "ludwigii"     "muenzneri"    "tephrogaster"
 
 All subspecies appear to be part of the species complex. Strangely, no
 *saturnus* are labeled in the group.
@@ -431,7 +438,7 @@ All subspecies appear to be part of the species complex. Strangely, no
 species.plotter(data=data,sciname = "Dicrurus ludwigii")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
 
 *Note* that populations in W Africa are labeled incorrectly. Using the
 above threshold:
@@ -450,8 +457,7 @@ data[which(data$SciName%like%"ludwigii"&
 unique(data$Subspecies[data$SciName%like%"atripennis"])
 ```
 
-    ## [1] <NA>
-    ## 15 Levels: adsimilis apivorus atactus coracinus divaricatus ... ugandensis
+    ## [1] NA
 
 No subspecies, as expected.
 
@@ -459,7 +465,7 @@ No subspecies, as expected.
 species.plotter(sciname = "Dicrurus atripennis",data=data)
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-24-1.png)<!-- --> There
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-26-1.png)<!-- --> There
 are some northerly, almost sehelian records that are surprising. The
 only one that we can immediately say is in error is the Kenyan record.
 
@@ -474,30 +480,351 @@ data=data[-which(data$SciName%like%"atripennis"&
 summary(data$Subspecies[data$SciName%like%"adsimilis"])
 ```
 
-    ##    adsimilis     apivorus      atactus    coracinus  divaricatus   forficatus 
-    ##          629          138            0            0          180            0 
-    ##        fugax hottentottus     ludwigii     lugubris    muenzneri       potior 
-    ##          113            0            0            9            0            0 
-    ##      sharpei tephrogaster   ugandensis         NA's 
-    ##            0            0            0        14174
+    ##    Length     Class      Mode 
+    ##     15243 character character
 
 Most of these are NA; we need to correct them to subspecies.
 
+``` r
+species.plotter("Dicrurus adsimilis",data=data)
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-29-1.png)<!-- -->
+
+Looks like a lot of different taxa are mixed together here.
+
+``` r
+adsimilis=shps[shps%like%'adsimilis']
+
+divaricatus=shps[shps%like%'divaricatus']
+
+tst.shp=c(adsimilis,divaricatus)
+```
+
+GBIF data includes some specimens, but it’s not *our* verified
+specimens, so subjecting all to reclassification.
+
+``` r
+summary(data$SciName)
+```
+
+    ##    Length     Class      Mode 
+    ##     18120 character character
+
+``` r
+data2=data%>%filter(SciName=="Dicrurus adsimilis")
+data=data%>%filter(SciName!="Dicrurus adsimilis")
+
+# for taxon "adsimilis"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+```
+
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_adsimilis_adsimilis.shp", layer: "D_adsimilis_adsimilis"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_adsimilis_apivorus.shp", layer: "D_adsimilis_apivorus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_adsimilis_fugax.shp", layer: "D_adsimilis_fugax"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_adsimilis_jubaensis.shp", layer: "D_adsimilis_jubaensis"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_divaricatus_divaricatus.shp", layer: "D_divaricatus_divaricatus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_divaricatus_lugubris.shp", layer: "D_divaricatus_lugubris"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id
+
+``` r
+data2$SciName[which(data2$Subspecies=="divaricatus")]="Dicrurus divaricatus"
+data2$SciName[which(data2$Subspecies=="lugubris")]="Dicrurus divaricatus"
+
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
+
+``` r
+species.plotter("Dicrurus adsimilis",data=data)
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-33-1.png)<!-- -->
+
+Mutch better map for this group.
+
 ## *Dicrurus divaricatus*
+
+Similar to the above, we need to group these together by subspecies as
+well. Similar to the above, birds near contact zones are not assigned
+and are removed.
+
+``` r
+species.plotter(data=data,sciname = "Dicrurus divaricatus")
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-34-1.png)<!-- -->
+
+Now to assign these to subspecies as well.
+
+``` r
+tst.shp=shps[which(shps%like%"divaricatus")]
+
+data2=data%>%filter(SciName=="Dicrurus divaricatus")
+data=data%>%filter(SciName!="Dicrurus divaricatus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+```
+
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_divaricatus_divaricatus.shp", layer: "D_divaricatus_divaricatus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_divaricatus_lugubris.shp", layer: "D_divaricatus_lugubris"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id
+
+``` r
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
 
 ## *Dicrurus atactus*
 
+``` r
+species.plotter(data=data,sciname = "Dicrurus atactus")
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-36-1.png)<!-- -->
+
+All these records look correct.
+
 ## *Dicrurus modestus*
+
+``` r
+species.plotter(data=data,sciname = "Dicrurus modestus")
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+
+We also need these to be assigned to population.
+
+``` r
+tst.shp=shps[shps%like%'modestus']
+```
+
+``` r
+data2=data%>%filter(SciName=="Dicrurus modestus")
+data=data%>%filter(SciName!="Dicrurus modestus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+```
+
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_modestus_atactus.shp", layer: "D_modestus_atactus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_modestus_coracinus.shp", layer: "D_modestus_coracinus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id 
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_modestus_modestus.shp", layer: "D_modestus_modestus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id
+
+``` r
+data2=na.omit(data2)
+
+data2$SciName[which(data2$Subspecies=="atactus")]="Dicrurus atactus"
+
+data=rbind(data,data2)%>%unique()
+```
+
+``` r
+species.plotter(data=data,sciname="Dicrurus modestus")
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
 
 ## *Dicrurus aldabranus*
 
+Excluded from this study.
+
+``` r
+data=data%>%
+  filter(SciName!="Dicrurus aldabranus")
+```
+
 ## *Dicrurus fuscipennis*
+
+Excluded from this study.
+
+``` r
+data=data%>%
+  filter(SciName!="Dicrurus fuscipennis")
+```
 
 ## *Dicrurus forficatus*
 
+Restrict to nominate, mainland Madagascar.
+
+``` r
+tst.shp=shps[shps%like%'forficatus']
+
+data2=data%>%filter(SciName=="Dicrurus forficatus")
+data=data%>%filter(SciName!="Dicrurus forficatus")
+
+# for taxon "divaricatus"
+data2$Subspecies=NA
+
+for(i in 1:length(tst.shp)){
+  # load shapefile
+  ssp=strsplit(tst.shp[i],"_")[[1]][4]
+  ssp=strsplit(ssp,"[.]")[[1]][1]
+  
+  y=readOGR(tst.shp[i])
+  # set data2 so we can do over
+  y@data[,]=1
+  # read locality data2
+  xy=data2%>%dplyr::select(Long,Lat)
+  coordinates(xy)= ~ Long + Lat
+  crs(xy)=crs(y)
+  
+  index1=over(xy,y)
+  index1=which(index1==1)
+  
+  data2$Subspecies[index1]=ssp
+}
+```
+
+    ## OGR data source with driver: ESRI Shapefile 
+    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/ssp_shp/D_forficatus_forficatus.shp", layer: "D_forficatus_forficatus"
+    ## with 1 features
+    ## It has 1 fields
+    ## Integer64 fields read as strings:  id
+
+``` r
+data2=na.omit(data2)
+
+data=rbind(data,data2)%>%unique()
+```
+
+``` r
+species.plotter(data=data,sciname = "Dicrurus forficatus")
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
+
 ## *Dicrurus waldenii*
 
+Excluded from study.
+
+``` r
+data=data%>%
+  filter(SciName!="Dicrurus waldenii")
+```
+
+## Save data
+
+``` r
+write_csv(data,paste0(filepath,"reassigned_data.csv"))
+```
+
 # Extract Environmental Data
+
+``` r
+data=read_csv(paste0(filepath,"reassigned_data.csv"))
+```
+
+    ## Rows: 13122 Columns: 5
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (3): SciName, Subspecies, Source
+    ## dbl (2): Long, Lat
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
 env_layers=paste0(gis,"ENVIREM_30arcsec/",
