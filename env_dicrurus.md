@@ -16,10 +16,27 @@ library(factoextra)
     ## Welcome! Want to learn more? See two factoextra-related books at https://goo.gl/ve3WBa
 
 ``` r
-library(maptools)
+library(fossil) # Rarefy code
 ```
 
     ## Loading required package: sp
+
+    ## Loading required package: maps
+
+    ## Loading required package: shapefiles
+
+    ## Loading required package: foreign
+
+    ## 
+    ## Attaching package: 'shapefiles'
+
+    ## The following objects are masked from 'package:foreign':
+    ## 
+    ##     read.dbf, write.dbf
+
+``` r
+library(maptools)
+```
 
     ## Checking rgeos availability: TRUE
     ## Please note that 'maptools' will be retired by the end of 2023,
@@ -88,6 +105,7 @@ library(tidyverse)
     ## x dplyr::first()     masks data.table::first()
     ## x dplyr::lag()       masks stats::lag()
     ## x dplyr::last()      masks data.table::last()
+    ## x purrr::map()       masks maps::map()
     ## x dplyr::select()    masks raster::select(), MASS::select()
     ## x purrr::transpose() masks data.table::transpose()
 
@@ -128,66 +146,77 @@ lakes=readOGR(paste0(gis,"ne_10m_lakes/ne_10m_lakes.shp"))
 
 ``` r
 elev=raster(paste0(gis,"elevation_1KMmd_GMTEDmd.tif"))
-specimen.xy=readOGR(paste0(filepath,"dicrurus.gpkg"))
+specimen.xy=read_csv(paste0(filepath,'dicrurus_locs_mar2022.csv'))
 ```
 
-    ## OGR data source with driver: GPKG 
-    ## Source: "/home/kupeornis/Dropbox/Manuscripts/Dicrurus/dicrurus.gpkg", layer: "dicrurus"
-    ## with 147 features
-    ## It has 11 fields
+    ## Rows: 255 Columns: 22
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr  (9): Museum, check, Notes, Sex/popn, sex, species, fugax country, fugax...
+    ## dbl (13): Catalog, Long, Lat, Kipps (mm), Wing length (mm), Tail retrice T5 ...
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
-xlim=c(extent(specimen.xy)[1:2])
-ylim=c(extent(specimen.xy)[3:4])
+# NOTE that long and lat were switched during the conversion
+ylim=c(min(specimen.xy$Long),max(specimen.xy$Long))
+xlim=c(min(specimen.xy$Lat),max(specimen.xy$Lat))
+```
+
+Correct the species field.
+
+``` r
+unique(specimen.xy$species)
+```
+
+    ##  [1] "ads.fugax"                  "apivorus"                  
+    ##  [3] "ads.jubaensis"              "divar(east)/ads.jubaensis?"
+    ##  [5] "ads.jubaensis/ads.fugax?"   "mod.coracinus"             
+    ##  [7] "divar(east)/divar(west)?"   "divar(west)"               
+    ##  [9] "atactus"                    "ads.adsimilis/ads.fugax?"  
+    ## [11] "ads.adsimilis"              "divar(east)"               
+    ## [13] "ads.fugax(usambara)"        "forficatus"
+
+``` r
+# ORDER MATTERS! Most complex first.
+specimen.xy$species=gsub("divar(east)/ads.jubaensis?","Dicrurus divaricatus/adsimilis jubaensis",specimen.xy$species)
+specimen.xy$species=gsub("ads.jubaensis/ads.fugax?","Dicrurus adsimilis jubaensis/fugax",specimen.xy$species)
+specimen.xy$species=gsub("divar(east)/divar(west)?","Dicrurus divaricatus east/west",specimen.xy$species)
+specimen.xy$species=gsub("ads.adsimilis/ads.fugax?","Dicrurus adsimilis adsimilis/fugax",specimen.xy$species)
+specimen.xy$species=gsub("ads.fugax","Dicrurus adsimilis fugax",specimen.xy$species)
+specimen.xy$species=gsub("apivorus","Dicrurus aapivorus",specimen.xy$species)
+specimen.xy$species=gsub("ads.jubaensis","Dicrurus adsimilis jubaensis",specimen.xy$species)
+specimen.xy$species=gsub("mod.coracinus","Dicrurus modestus coracinus",specimen.xy$species)
+specimen.xy$species=gsub("divar(west)","Dicrurus divaricatus west",specimen.xy$species)
+specimen.xy$species=gsub("atactus","Dicrurus atactus",specimen.xy$species)
+specimen.xy$species=gsub("ads.adsimilis","Dicrurus adsimilis adsimilis",specimen.xy$species)
+specimen.xy$species=gsub("divar(east)","Dicrurus divaricatus east",specimen.xy$species)
+specimen.xy$species=gsub("ads.fugax(usambara)","Dicrurus adsimilis fugax",specimen.xy$species)
+specimen.xy$species=gsub("forficatus","Dicrurus forficatus",specimen.xy$species)
 ```
 
 ``` r
 plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
 plot(ocean,col="#A6BBFF",add=T)
 plot(lakes,col="#A6BBFF",add=T)
-points(specimen.xy,col="black",pch=19)
+points(x=specimen.xy$Lat,y=specimen.xy$Long,
+       col=as.factor(specimen.xy$species),pch=19)
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 Link the occurrences with specimen metadata. This has to be done based
 on placenames.
 
 ``` r
-specimen.data=specimen.xy@data
-specimen.data=cbind(specimen.xy@coords,specimen.data)
-colnames(specimen.data)[1]="Long"
-colnames(specimen.data)[2]="Lat"
-specimen.data=specimen.data%>%
-  dplyr::select(Long,Lat,Name)
+colnames(specimen.xy)[4:5]=c("Lat","Long")
+specimen.data=specimen.xy%>%
+  dplyr::select(Long,Lat,species)%>%
+  unique()
+colnames(specimen.data)[3]="Species"
 
-for(i in 1:nrow(specimen.data)){
-  loc=specimen.data$Name[i]
-  specimen.data$Name[i]=strsplit(loc,") ")[[1]][2]
-}
-
-write_csv(specimen.data,paste0(filepath,"localities.csv"))
-```
-
-I checked names externally to be sure they matched up. There are a lot
-of localities missing from the KMZ - so I’ve kicked it back to the
-others for verification of localities.
-
-``` r
-utms=read_csv(paste0(filepath,'dicrurus_utm.csv'))
-```
-
-    ## Rows: 255 Columns: 22
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## Delimiter: ","
-    ## chr  (9): Museum, quality check, Locality, Country, Sex/popn, sex, species, ...
-    ## dbl (13): Mus_cat#, UTM E, UTM N, Kipps (mm), Wing length (mm), Tail retrice...
-    ## 
-    ## ℹ Use `spec()` to retrieve the full column specification for this data.
-    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
-
-``` r
-utms$Lat=utms$Long=0
+# removing location linking step from previous version
 ```
 
 ## Merge with GBIF
@@ -231,6 +260,110 @@ gbif=gbif%>%
   # get unique
   unique()
 
+# convert specimen sheet to same format
+#colnames(gbif)
+#colnames(specimen.data)
+specimen.data$month=NA
+specimen.data$infraspecificEpithet=NA
+specimen.data$countryCode=NA
+
+colnames(specimen.data)[1:3]=c("decimalLongitude","decimalLatitude","species")
+
+col.order=colnames(gbif)
+specimen.data=specimen.data%>%
+  dplyr::select(paste0(col.order))
+```
+
+``` r
+sp.field=unique(specimen.data$species)
+
+# adsimilis fugax
+i=1
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="fugax"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus aapivorus
+i=2
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="apivorus"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis jubaensis
+i=3
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="jubaensis"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis/divaricatus
+i=4
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis/divaricatus"
+
+# Dicrurus adsimilis jubaensis/fugax
+i=5
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='jubaensis/fugax'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus modestus coracinus
+i=6
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='coracinus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus modestus"
+
+# Dicrurus divaricatus, ssp unknown
+i=7
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus divaricatus divaricatus
+i=8
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='divaricatus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus atactus
+i=9
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus atactus"
+
+# Dicrurus adsimilis adsimilis/fugax
+i=10
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='adsimilis/fugax'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis adsimilis
+i=11
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='adsimilis'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus divaricatus lugubris
+i=12
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='lugubris'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus adsimilis fugax(usambara)
+i=13
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='usambarae'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus forficatus forficatus
+i=14
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='forficatus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus forficatus"
+
+write_csv(specimen.data,file=paste0("dicrurus_specimen_localities_fixed.csv"))
+```
+
+``` r
 write_csv(gbif,file = paste0(filepath,"dicrurus_gbif_localities.csv"))
 ```
 
@@ -248,15 +381,29 @@ gbif=read_csv(paste0(filepath,"dicrurus_gbif_localities.csv"))
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
 
 ``` r
+specimen.data=read_csv(paste0("dicrurus_specimen_localities_fixed.csv"))
+```
+
+    ## Rows: 142 Columns: 6
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## Delimiter: ","
+    ## chr (2): species, infraspecificEpithet
+    ## dbl (2): decimalLongitude, decimalLatitude
+    ## lgl (2): countryCode, month
+    ## 
+    ## ℹ Use `spec()` to retrieve the full column specification for this data.
+    ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+``` r
 plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
 plot(ocean,col="#A6BBFF",add=T)
 plot(lakes,col="#A6BBFF",add=T)
-points(specimen.xy,col="red",pch=19)
+points(specimen.xy$Lat,specimen.xy$Long,col="red",pch=19) # coordswitch
 points(gbif$decimalLongitude,gbif$decimalLatitude,
        col="black",pch=".")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 The samples specimens cover a lot more of northeastern Africa than the
 other data. Note how data-dense Southern Africa is relative to the rest
@@ -266,17 +413,22 @@ Prepare data for merge.
 
 ``` r
 # create voucher column
-
-colnames(gbif)=c("SciName","Subspecies","Long","Lat","Country","Month")
+#colnames(specimen.data)==colnames(gbif)
+colnames(gbif)=colnames(specimen.data)=c("SciName","Subspecies","Long","Lat","Country","Month")
 
 # only gbif data for now; to be changed later
 
 gbif=gbif%>%
   dplyr::select(SciName,Subspecies,Long,Lat)
+spec=specimen.data%>%
+  dplyr::select(SciName,Subspecies,Long,Lat)
 
 gbif$Source="GBIF"
+spec$Source="Specimen"
 
-write_csv(gbif,paste0(filepath,"combined_data.csv"))
+all.dat=rbind(gbif,spec)
+
+write_csv(all.dat,paste0(filepath,"combined_data.csv"))
 ```
 
 # Population assignation
@@ -292,7 +444,7 @@ attributed, so we are leaving them alone.
 data=read_csv(paste0(filepath,"combined_data.csv"))
 ```
 
-    ## Rows: 18129 Columns: 5
+    ## Rows: 18271 Columns: 5
     ## ── Column specification ────────────────────────────────────────────────────────
     ## Delimiter: ","
     ## chr (3): SciName, Subspecies, Source
@@ -308,14 +460,25 @@ data=read_csv(paste0(filepath,"combined_data.csv"))
 ```
 
 ``` r
-unique(data$SciName)
+summary(as.factor(data$SciName))
 ```
 
-    ##  [1] "Dicrurus adsimilis"    "Dicrurus modestus"     "Dicrurus atripennis"  
-    ##  [4] "Dicrurus ludwigii"     "Dicrurus forficatus"   "Dicrurus waldenii"    
-    ##  [7] "Dicrurus sharpei"      "Dicrurus occidentalis" "Dicrurus atactus"     
-    ## [10] "Dicrurus hottentottus" NA                      "Dicrurus fuscipennis" 
-    ## [13] "Dicrurus megarhynchus" "Dicrurus elgonensis"
+    ##             Dicrurus adsimilis Dicrurus adsimilis/divaricatus 
+    ##                          15337                              7 
+    ##               Dicrurus atactus            Dicrurus atripennis 
+    ##                            327                            230 
+    ##           Dicrurus divaricatus            Dicrurus elgonensis 
+    ##                              9                              1 
+    ##            Dicrurus forficatus           Dicrurus fuscipennis 
+    ##                            859                              2 
+    ##          Dicrurus hottentottus              Dicrurus ludwigii 
+    ##                              1                           1017 
+    ##          Dicrurus megarhynchus              Dicrurus modestus 
+    ##                              1                            279 
+    ##          Dicrurus occidentalis               Dicrurus sharpei 
+    ##                            115                             77 
+    ##              Dicrurus waldenii                           NA's 
+    ##                              1                              8
 
 Looks like the main study species are present.
 
@@ -325,12 +488,15 @@ Looks like the main study species are present.
 species.plotter=function(sciname,data){
   data2=data%>%
     filter(SciName==sciname)%>%
-    dplyr::select(Long,Lat)
+    dplyr::select(Long,Lat,Source)
   
   plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
   plot(ocean,col="#A6BBFF",add=T)
   plot(lakes,col="#A6BBFF",add=T)
-  points(data2,col="black",pch=19)
+  index1=which(data2$Source=="GBIF")
+  index2=which(data2$Source=="Specimen")
+  points(data2[index1,1:2],col='black',pch=19)
+  if(length(index2)>0){points(data2[index2,1:2],col='red',pch=19)}
 }
 ```
 
@@ -345,7 +511,25 @@ shps=paste0(filepath,"ssp_shp/",list.files(paste0(filepath,"ssp_shp/"),pattern="
 data=data[-which(is.na(data$SciName)),]
 ```
 
+### Rarefying the data
+
+MVEs are supposed to be robust to be more robust to data bias, but given
+issues with thresholding, biases can still remain. Given that some
+countries are exponentially more sampled that other (e.g., South Africa
+vs. Chad), we are also going to run a rarefy code. This is a custom code
+written by Dr. Joe Manthey; it is loaded locally and is not included
+with this release.
+
+we are going to rarefy down to 20 km to account for potentially long
+traveling counts
+
 ## *Dicrurus occidentalis*
+
+Firstly, rarefy.
+
+``` r
+data=rarefy_species(species = "Dicrurus occidentalis",km=20)
+```
 
 ``` r
 which(data$Subspecies%like%"occidentalis")
@@ -359,11 +543,16 @@ There is nothing ascribed to the subspecies *occidentalis*.
 species.plotter(data=data,sciname="Dicrurus occidentalis")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
 
-All individuals are within the range of *D. occidentalis*.
+All individuals are within the range of *D. occidentalis*. There are no
+specimens.
 
 ## *Dicrurus sharpei*
+
+``` r
+data=rarefy_species(species="Dicrurus sharpei",km=20)
+```
 
 ``` r
 data[which(data$Subspecies%like%"sharpei"),]
@@ -405,10 +594,10 @@ data[index,"Subspecies"]=NA
 species.plotter(data=data,sciname="Dicrurus sharpei")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
 
 There are lots of erroneous western records, which refer to *D.
-occidentalis*.
+occidentalis*. There are no specimens.
 
 ``` r
 data[which(data$SciName%like%"sharpei"&data$Long<3.45),
@@ -416,6 +605,10 @@ data[which(data$SciName%like%"sharpei"&data$Long<3.45),
 ```
 
 ## *Dicrurus ludwigii*
+
+``` r
+data=rarefy_species(species="Dicrurus ludwigii",km=20)
+```
 
 This species consists of the following subspecies:
 
@@ -438,7 +631,7 @@ All subspecies appear to be part of the species complex. Strangely, no
 species.plotter(data=data,sciname = "Dicrurus ludwigii")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-30-1.png)<!-- -->
 
 *Note* that populations in W Africa are labeled incorrectly. Using the
 above threshold:
@@ -454,6 +647,10 @@ data[which(data$SciName%like%"ludwigii"&
 ## *Dicrurus atripennis*
 
 ``` r
+data=rarefy_species(species="Dicrurus atripennis",km=20)
+```
+
+``` r
 unique(data$Subspecies[data$SciName%like%"atripennis"])
 ```
 
@@ -465,8 +662,8 @@ No subspecies, as expected.
 species.plotter(sciname = "Dicrurus atripennis",data=data)
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-26-1.png)<!-- --> There
-are some northerly, almost sehelian records that are surprising. The
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-34-1.png)<!-- --> There
+are some northerly, almost Sahelian records that are surprising. The
 only one that we can immediately say is in error is the Kenyan record.
 
 ``` r
@@ -477,11 +674,17 @@ data=data[-which(data$SciName%like%"atripennis"&
 ## *Dicrurus adsimilis*
 
 ``` r
-summary(data$Subspecies[data$SciName%like%"adsimilis"])
+data=rarefy_species(species="Dicrurus adsimilis",km=20)
 ```
 
-    ##    Length     Class      Mode 
-    ##     15243 character character
+``` r
+summary(as.factor(data$Subspecies[data$SciName%like%"adsimilis"]))
+```
+
+    ##       adsimilis adsimilis/fugax        apivorus     divaricatus           fugax 
+    ##             109               4              37              82              68 
+    ##       jubaensis jubaensis/fugax        lugubris       usambarae            NA's 
+    ##              13               2               5               1            1646
 
 Most of these are NA; we need to correct them to subspecies.
 
@@ -489,7 +692,7 @@ Most of these are NA; we need to correct them to subspecies.
 species.plotter("Dicrurus adsimilis",data=data)
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-29-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-38-1.png)<!-- -->
 
 Looks like a lot of different taxa are mixed together here.
 
@@ -505,14 +708,31 @@ GBIF data includes some specimens, but it’s not *our* verified
 specimens, so subjecting all to reclassification.
 
 ``` r
-summary(data$SciName)
+summary(as.factor(data$SciName))
 ```
 
-    ##    Length     Class      Mode 
-    ##     18120 character character
+    ##             Dicrurus adsimilis Dicrurus adsimilis/divaricatus 
+    ##                           1960                              7 
+    ##               Dicrurus atactus            Dicrurus atripennis 
+    ##                            327                             95 
+    ##           Dicrurus divaricatus            Dicrurus elgonensis 
+    ##                              9                              1 
+    ##            Dicrurus forficatus           Dicrurus fuscipennis 
+    ##                            859                              2 
+    ##          Dicrurus hottentottus              Dicrurus ludwigii 
+    ##                              1                            227 
+    ##          Dicrurus megarhynchus              Dicrurus modestus 
+    ##                              1                            279 
+    ##          Dicrurus occidentalis               Dicrurus sharpei 
+    ##                             71                             36 
+    ##              Dicrurus waldenii 
+    ##                              1
 
 ``` r
-data2=data%>%filter(SciName=="Dicrurus adsimilis")
+spec.dat=data%>%filter(SciName=="Dicrurus adsimilis")%>%
+  filter(Source=="Specimen")
+data2=data%>%filter(SciName=="Dicrurus adsimilis")%>%
+  filter(Source=="GBIF")
 data=data%>%filter(SciName!="Dicrurus adsimilis")
 
 # for taxon "adsimilis"
@@ -575,18 +795,22 @@ data2$SciName[which(data2$Subspecies=="lugubris")]="Dicrurus divaricatus"
 
 data2=na.omit(data2)
 
-data=rbind(data,data2)%>%unique()
+data=rbind(data,data2,spec.dat)%>%unique()
 ```
 
 ``` r
 species.plotter("Dicrurus adsimilis",data=data)
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-33-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
 
-Mutch better map for this group.
+Much better map for this group.
 
 ## *Dicrurus divaricatus*
+
+``` r
+data=rarefy_species(species="Dicrurus divaricatus",km=20)
+```
 
 Similar to the above, we need to group these together by subspecies as
 well. Similar to the above, birds near contact zones are not assigned
@@ -596,7 +820,7 @@ and are removed.
 species.plotter(data=data,sciname = "Dicrurus divaricatus")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-34-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
 
 Now to assign these to subspecies as well.
 
@@ -649,20 +873,28 @@ data=rbind(data,data2)%>%unique()
 ## *Dicrurus atactus*
 
 ``` r
+data=rarefy_species(species="Dicrurus atactus",km=20)
+```
+
+``` r
 species.plotter(data=data,sciname = "Dicrurus atactus")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-36-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-47-1.png)<!-- -->
 
 All these records look correct.
 
 ## *Dicrurus modestus*
 
 ``` r
+data=rarefy_species(species="Dicrurus modestus",km=20)
+```
+
+``` r
 species.plotter(data=data,sciname = "Dicrurus modestus")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
 
 We also need these to be assigned to population.
 
@@ -671,7 +903,11 @@ tst.shp=shps[shps%like%'modestus']
 ```
 
 ``` r
-data2=data%>%filter(SciName=="Dicrurus modestus")
+spec.data=data%>%
+  filter(SciName=="Dicrurus modestus")%>%
+  filter(Source=="Specimen")
+data2=data%>%filter(SciName=="Dicrurus modestus")%>%
+  filter(Source=="GBIF")
 data=data%>%filter(SciName!="Dicrurus modestus")
 
 # for taxon "divaricatus"
@@ -718,14 +954,14 @@ data2=na.omit(data2)
 
 data2$SciName[which(data2$Subspecies=="atactus")]="Dicrurus atactus"
 
-data=rbind(data,data2)%>%unique()
+data=rbind(data,data2,spec.data)%>%unique()
 ```
 
 ``` r
 species.plotter(data=data,sciname="Dicrurus modestus")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
 
 ## *Dicrurus aldabranus*
 
@@ -746,6 +982,10 @@ data=data%>%
 ```
 
 ## *Dicrurus forficatus*
+
+``` r
+data=rarefy_species(species="Dicrurus forficatus",km=20)
+```
 
 Restrict to nominate, mainland Madagascar.
 
@@ -794,7 +1034,7 @@ data=rbind(data,data2)%>%unique()
 species.plotter(data=data,sciname = "Dicrurus forficatus")
 ```
 
-![](env_dicrurus_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
 
 ## *Dicrurus waldenii*
 
@@ -808,6 +1048,9 @@ data=data%>%
 ## Save data
 
 ``` r
+colnames(data)=c('Species','Subspecies',
+                 'Long','Lat','Source')
+data=data%>%unique()
 write_csv(data,paste0(filepath,"reassigned_data.csv"))
 ```
 
@@ -817,18 +1060,42 @@ write_csv(data,paste0(filepath,"reassigned_data.csv"))
 data=read_csv(paste0(filepath,"reassigned_data.csv"))
 ```
 
-    ## Rows: 13122 Columns: 5
+    ## Rows: 2423 Columns: 5
     ## ── Column specification ────────────────────────────────────────────────────────
     ## Delimiter: ","
-    ## chr (3): SciName, Subspecies, Source
+    ## chr (3): Species, Subspecies, Source
     ## dbl (2): Long, Lat
     ## 
     ## ℹ Use `spec()` to retrieve the full column specification for this data.
     ## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+
+First, a quick preview of distributions:
+
+``` r
+plot(ocean,col="#A6BBFF",xlim=xlim*1.1,ylim=ylim*1.1)
+points(data[,c('Long','Lat')],col=as.factor(data$Species),pch=20)
+```
+
+![](env_dicrurus_files/figure-gfm/unnamed-chunk-61-1.png)<!-- -->
 
 ``` r
 env_layers=paste0(gis,"ENVIREM_30arcsec/",
   list.files(paste0(gis,"ENVIREM_30arcsec/"),pattern="*.bil"))
 
 # remove set count files
+env_layers=env_layers[-which(env_layers%like%"growing")]
+env_layers=env_layers[-which(env_layers%like%"Count")]
+```
+
+``` r
+y=stack(env_layers)
+
+coords=data%>%
+  dplyr::select(Long,Lat)
+
+env_vals=raster::extract(x=y,y=coords)
+
+data=cbind(data,env_vals)
+
+write_csv(data,paste0(filepath,"env_extracts.csv"))
 ```

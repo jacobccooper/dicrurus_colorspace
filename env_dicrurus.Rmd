@@ -13,6 +13,7 @@ gis="~/Dropbox/GIS/"
 ```{r}
 library(data.table)
 library(factoextra)
+library(fossil) # Rarefy code
 library(maptools)
 library(MASS)
 library(raster)
@@ -34,44 +35,56 @@ Import coordinates for colorspace specimens from KMZ file.
 ocean=readOGR(paste0(gis,"ne_10m_ocean/ne_10m_ocean.shp"))
 lakes=readOGR(paste0(gis,"ne_10m_lakes/ne_10m_lakes.shp"))
 elev=raster(paste0(gis,"elevation_1KMmd_GMTEDmd.tif"))
-specimen.xy=readOGR(paste0(filepath,"dicrurus.gpkg"))
+specimen.xy=read_csv(paste0(filepath,'dicrurus_locs_mar2022.csv'))
 
-xlim=c(extent(specimen.xy)[1:2])
-ylim=c(extent(specimen.xy)[3:4])
+# NOTE that long and lat were switched during the conversion
+ylim=c(min(specimen.xy$Long),max(specimen.xy$Long))
+xlim=c(min(specimen.xy$Lat),max(specimen.xy$Lat))
 ```
+
+Correct the species field.
+
+```{r}
+unique(specimen.xy$species)
+```
+
+```{r}
+# ORDER MATTERS! Most complex first.
+specimen.xy$species=gsub("divar(east)/ads.jubaensis?","Dicrurus divaricatus/adsimilis jubaensis",specimen.xy$species)
+specimen.xy$species=gsub("ads.jubaensis/ads.fugax?","Dicrurus adsimilis jubaensis/fugax",specimen.xy$species)
+specimen.xy$species=gsub("divar(east)/divar(west)?","Dicrurus divaricatus east/west",specimen.xy$species)
+specimen.xy$species=gsub("ads.adsimilis/ads.fugax?","Dicrurus adsimilis adsimilis/fugax",specimen.xy$species)
+specimen.xy$species=gsub("ads.fugax","Dicrurus adsimilis fugax",specimen.xy$species)
+specimen.xy$species=gsub("apivorus","Dicrurus aapivorus",specimen.xy$species)
+specimen.xy$species=gsub("ads.jubaensis","Dicrurus adsimilis jubaensis",specimen.xy$species)
+specimen.xy$species=gsub("mod.coracinus","Dicrurus modestus coracinus",specimen.xy$species)
+specimen.xy$species=gsub("divar(west)","Dicrurus divaricatus west",specimen.xy$species)
+specimen.xy$species=gsub("atactus","Dicrurus atactus",specimen.xy$species)
+specimen.xy$species=gsub("ads.adsimilis","Dicrurus adsimilis adsimilis",specimen.xy$species)
+specimen.xy$species=gsub("divar(east)","Dicrurus divaricatus east",specimen.xy$species)
+specimen.xy$species=gsub("ads.fugax(usambara)","Dicrurus adsimilis fugax",specimen.xy$species)
+specimen.xy$species=gsub("forficatus","Dicrurus forficatus",specimen.xy$species)
+```
+
+
 ```{r}
 plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
 plot(ocean,col="#A6BBFF",add=T)
 plot(lakes,col="#A6BBFF",add=T)
-points(specimen.xy,col="black",pch=19)
+points(x=specimen.xy$Lat,y=specimen.xy$Long,
+       col=as.factor(specimen.xy$species),pch=19)
 ```
 
 Link the occurrences with specimen metadata. This has to be done based on placenames.
 
 ```{r,eval=F}
-specimen.data=specimen.xy@data
-specimen.data=cbind(specimen.xy@coords,specimen.data)
-colnames(specimen.data)[1]="Long"
-colnames(specimen.data)[2]="Lat"
-specimen.data=specimen.data%>%
-  dplyr::select(Long,Lat,Name)
+colnames(specimen.xy)[4:5]=c("Lat","Long")
+specimen.data=specimen.xy%>%
+  dplyr::select(Long,Lat,species)%>%
+  unique()
+colnames(specimen.data)[3]="Species"
 
-for(i in 1:nrow(specimen.data)){
-  loc=specimen.data$Name[i]
-  specimen.data$Name[i]=strsplit(loc,") ")[[1]][2]
-}
-
-write_csv(specimen.data,paste0(filepath,"localities.csv"))
-```
-
-I checked names externally to be sure they matched up. There are a lot of localities missing from the KMZ - so I've kicked it back to the others for verification of localities.
-
-```{r}
-utms=read_csv(paste0(filepath,'dicrurus_utm.csv'))
-
-utms$Lat=utms$Long=0
-
-
+# removing location linking step from previous version
 ```
 
 ## Merge with GBIF
@@ -115,16 +128,119 @@ gbif=gbif%>%
   # get unique
   unique()
 
+# convert specimen sheet to same format
+#colnames(gbif)
+#colnames(specimen.data)
+specimen.data$month=NA
+specimen.data$infraspecificEpithet=NA
+specimen.data$countryCode=NA
+
+colnames(specimen.data)[1:3]=c("decimalLongitude","decimalLatitude","species")
+
+col.order=colnames(gbif)
+specimen.data=specimen.data%>%
+  dplyr::select(paste0(col.order))
+```
+```{r,eval=F}
+sp.field=unique(specimen.data$species)
+
+# adsimilis fugax
+i=1
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="fugax"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus aapivorus
+i=2
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="apivorus"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis jubaensis
+i=3
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]="jubaensis"
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis/divaricatus
+i=4
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis/divaricatus"
+
+# Dicrurus adsimilis jubaensis/fugax
+i=5
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='jubaensis/fugax'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus modestus coracinus
+i=6
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='coracinus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus modestus"
+
+# Dicrurus divaricatus, ssp unknown
+i=7
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus divaricatus divaricatus
+i=8
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='divaricatus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus atactus
+i=9
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]=NA
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus atactus"
+
+# Dicrurus adsimilis adsimilis/fugax
+i=10
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='adsimilis/fugax'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus adsimilis adsimilis
+i=11
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='adsimilis'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus divaricatus lugubris
+i=12
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='lugubris'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus divaricatus"
+
+# Dicrurus adsimilis fugax(usambara)
+i=13
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='usambarae'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus adsimilis"
+
+# Dicrurus forficatus forficatus
+i=14
+sp.field[i]
+specimen.data$infraspecificEpithet[specimen.data$species==sp.field[i]]='forficatus'
+specimen.data$species[specimen.data$species==sp.field[i]]="Dicrurus forficatus"
+
+write_csv(specimen.data,file=paste0("dicrurus_specimen_localities_fixed.csv"))
+```
+```{r,eval=F}
 write_csv(gbif,file = paste0(filepath,"dicrurus_gbif_localities.csv"))
 ```
 ```{r}
 gbif=read_csv(paste0(filepath,"dicrurus_gbif_localities.csv"))
+specimen.data=read_csv(paste0("dicrurus_specimen_localities_fixed.csv"))
 ```
 ```{r}
 plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
 plot(ocean,col="#A6BBFF",add=T)
 plot(lakes,col="#A6BBFF",add=T)
-points(specimen.xy,col="red",pch=19)
+points(specimen.xy$Lat,specimen.xy$Long,col="red",pch=19) # coordswitch
 points(gbif$decimalLongitude,gbif$decimalLatitude,
        col="black",pch=".")
 ```
@@ -133,19 +249,24 @@ The samples specimens cover a lot more of northeastern Africa than the other dat
 
 Prepare data for merge.
 
-```{r}
+```{r,eval=F}
 # create voucher column
-
-colnames(gbif)=c("SciName","Subspecies","Long","Lat","Country","Month")
+#colnames(specimen.data)==colnames(gbif)
+colnames(gbif)=colnames(specimen.data)=c("SciName","Subspecies","Long","Lat","Country","Month")
 
 # only gbif data for now; to be changed later
 
 gbif=gbif%>%
   dplyr::select(SciName,Subspecies,Long,Lat)
+spec=specimen.data%>%
+  dplyr::select(SciName,Subspecies,Long,Lat)
 
 gbif$Source="GBIF"
+spec$Source="Specimen"
 
-write_csv(gbif,paste0(filepath,"combined_data.csv"))
+all.dat=rbind(gbif,spec)
+
+write_csv(all.dat,paste0(filepath,"combined_data.csv"))
 ```
 
 # Population assignation
@@ -161,7 +282,7 @@ data=read_csv(paste0(filepath,"combined_data.csv"))
 ```
 
 ```{r}
-unique(data$SciName)
+summary(as.factor(data$SciName))
 ```
 
 Looks like the main study species are present.
@@ -172,12 +293,15 @@ Looks like the main study species are present.
 species.plotter=function(sciname,data){
   data2=data%>%
     filter(SciName==sciname)%>%
-    dplyr::select(Long,Lat)
+    dplyr::select(Long,Lat,Source)
   
   plot(elev,xlim=xlim*1.1,ylim=ylim*1.1)
   plot(ocean,col="#A6BBFF",add=T)
   plot(lakes,col="#A6BBFF",add=T)
-  points(data2,col="black",pch=19)
+  index1=which(data2$Source=="GBIF")
+  index2=which(data2$Source=="Specimen")
+  points(data2[index1,1:2],col='black',pch=19)
+  if(length(index2)>0){points(data2[index2,1:2],col='red',pch=19)}
 }
 ```
 
@@ -192,9 +316,41 @@ shps=paste0(filepath,"ssp_shp/",list.files(paste0(filepath,"ssp_shp/"),pattern="
 data=data[-which(is.na(data$SciName)),]
 ```
 
+### Rarefying the data
 
+MVEs are supposed to be robust to be more robust to data bias, but given issues with thresholding, biases can still remain. Given that some countries are exponentially more sampled that other (e.g., South Africa vs. Chad), we are also going to run a rarefy code. This is a custom code written by Dr. Joe Manthey; it is loaded locally and is not included with this release.
+
+```{r,echo=F}
+source("~/Dropbox/Manuscripts/Dicrurus/Manthey_rarefy_2017_dicrurus.R")
+
+rarefy_species=function(species,km){
+  subset.data=data%>%
+    filter(SciName==species)%>%
+    filter(Source=='GBIF')
+  specimens=data%>%
+    filter(SciName==species)%>%
+    filter(Source=='Specimen')
+  if(nrow(subset.data)<1){
+    print("ERROR: check your spelling.")
+    break}
+  data=data%>%filter(SciName!=species)
+  
+  # run modified code
+  subset.data=rarefy(input=subset.data,distance.km=km)
+  data=rbind(data,subset.data,specimens)
+  return(data)
+}
+```
+
+we are going to rarefy down to 20 km to account for potentially long traveling counts
 
 ## *Dicrurus occidentalis*
+
+Firstly, rarefy.
+
+```{r}
+data=rarefy_species(species = "Dicrurus occidentalis",km=20)
+```
 
 ```{r}
 which(data$Subspecies%like%"occidentalis")
@@ -205,9 +361,13 @@ There is nothing ascribed to the subspecies *occidentalis*.
 species.plotter(data=data,sciname="Dicrurus occidentalis")
 ```
 
-All individuals are within the range of *D. occidentalis*.
+All individuals are within the range of *D. occidentalis*. There are no specimens.
 
 ## *Dicrurus sharpei*
+
+```{r}
+data=rarefy_species(species="Dicrurus sharpei",km=20)
+```
 
 ```{r}
 data[which(data$Subspecies%like%"sharpei"),]
@@ -225,15 +385,22 @@ data[index,"Subspecies"]=NA
 species.plotter(data=data,sciname="Dicrurus sharpei")
 ```
 
-There are lots of erroneous western records, which refer to *D. occidentalis*.
+There are lots of erroneous western records, which refer to *D. occidentalis*. There are no specimens. We also are limited to south of the Benue, as this is where the species is certainly known. Note that records from Jos are best omitted from this dataset at this time, and that records west of the Niger are likely *D. occidentalis*.
 
 ```{r}
 data[which(data$SciName%like%"sharpei"&data$Long<3.45),
      "SciName"]="Dicrurus occidentalis"
+
+# remove north of Benue
+data=data[-which(data$SciName%like%"sharpei"&
+                   data$Lat>8.9&data$Long<10.2),]
 ```
 
-
 ## *Dicrurus ludwigii*
+
+```{r}
+data=rarefy_species(species="Dicrurus ludwigii",km=20)
+```
 
 This species consists of the following subspecies:
 
@@ -264,6 +431,10 @@ data[which(data$SciName%like%"ludwigii"&
 ## *Dicrurus atripennis*
 
 ```{r}
+data=rarefy_species(species="Dicrurus atripennis",km=20)
+```
+
+```{r}
 unique(data$Subspecies[data$SciName%like%"atripennis"])
 ```
 No subspecies, as expected.
@@ -271,7 +442,7 @@ No subspecies, as expected.
 ```{r}
 species.plotter(sciname = "Dicrurus atripennis",data=data)
 ```
-There are some northerly, almost sehelian records that are surprising. The only one that we can immediately say is in error is the Kenyan record.
+There are some northerly, almost Sahelian records that are surprising. The only one that we can immediately say is in error is the Kenyan record.
 
 ```{r}
 data=data[-which(data$SciName%like%"atripennis"&
@@ -281,7 +452,11 @@ data=data[-which(data$SciName%like%"atripennis"&
 ## *Dicrurus adsimilis*
 
 ```{r}
-summary(data$Subspecies[data$SciName%like%"adsimilis"])
+data=rarefy_species(species="Dicrurus adsimilis",km=20)
+```
+
+```{r}
+summary(as.factor(data$Subspecies[data$SciName%like%"adsimilis"]))
 ```
 
 Most of these are NA; we need to correct them to subspecies.
@@ -303,12 +478,15 @@ tst.shp=c(adsimilis,divaricatus)
 GBIF data includes some specimens, but it's not *our* verified specimens, so subjecting all to reclassification.
 
 ```{r}
-summary(data$SciName)
+summary(as.factor(data$SciName))
 ```
 
 
 ```{r}
-data2=data%>%filter(SciName=="Dicrurus adsimilis")
+spec.dat=data%>%filter(SciName=="Dicrurus adsimilis")%>%
+  filter(Source=="Specimen")
+data2=data%>%filter(SciName=="Dicrurus adsimilis")%>%
+  filter(Source=="GBIF")
 data=data%>%filter(SciName!="Dicrurus adsimilis")
 
 # for taxon "adsimilis"
@@ -338,16 +516,20 @@ data2$SciName[which(data2$Subspecies=="lugubris")]="Dicrurus divaricatus"
 
 data2=na.omit(data2)
 
-data=rbind(data,data2)%>%unique()
+data=rbind(data,data2,spec.dat)%>%unique()
 ```
 
 ```{r}
 species.plotter("Dicrurus adsimilis",data=data)
 ```
 
-Mutch better map for this group.
+Much better map for this group.
 
 ## *Dicrurus divaricatus*
+
+```{r}
+data=rarefy_species(species="Dicrurus divaricatus",km=20)
+```
 
 Similar to the above, we need to group these together by subspecies as well. Similar to the above, birds near contact zones are not assigned and are removed.
 
@@ -393,6 +575,10 @@ data=rbind(data,data2)%>%unique()
 ## *Dicrurus atactus*
 
 ```{r}
+data=rarefy_species(species="Dicrurus atactus",km=20)
+```
+
+```{r}
 species.plotter(data=data,sciname = "Dicrurus atactus")
 ```
 
@@ -401,9 +587,12 @@ All these records look correct.
 ## *Dicrurus modestus*
 
 ```{r}
-species.plotter(data=data,sciname = "Dicrurus modestus")
+data=rarefy_species(species="Dicrurus modestus",km=20)
 ```
 
+```{r}
+species.plotter(data=data,sciname = "Dicrurus modestus")
+```
 
 We also need these to be assigned to population.
 
@@ -412,7 +601,11 @@ tst.shp=shps[shps%like%'modestus']
 ```
 
 ```{r}
-data2=data%>%filter(SciName=="Dicrurus modestus")
+spec.data=data%>%
+  filter(SciName=="Dicrurus modestus")%>%
+  filter(Source=="Specimen")
+data2=data%>%filter(SciName=="Dicrurus modestus")%>%
+  filter(Source=="GBIF")
 data=data%>%filter(SciName!="Dicrurus modestus")
 
 # for taxon "divaricatus"
@@ -441,7 +634,7 @@ data2=na.omit(data2)
 
 data2$SciName[which(data2$Subspecies=="atactus")]="Dicrurus atactus"
 
-data=rbind(data,data2)%>%unique()
+data=rbind(data,data2,spec.data)%>%unique()
 ```
 
 ```{r}
@@ -469,6 +662,10 @@ data=data%>%
 
 
 ## *Dicrurus forficatus*
+
+```{r}
+data=rarefy_species(species="Dicrurus forficatus",km=20)
+```
 
 Restrict to nominate, mainland Madagascar.
 
@@ -510,7 +707,6 @@ data=rbind(data,data2)%>%unique()
 species.plotter(data=data,sciname = "Dicrurus forficatus")
 ```
 
-
 ## *Dicrurus waldenii*
 
 Excluded from study.
@@ -525,7 +721,7 @@ data=data%>%
 ```{r}
 colnames(data)=c('Species','Subspecies',
                  'Long','Lat','Source')
-
+data=data%>%unique()
 write_csv(data,paste0(filepath,"reassigned_data.csv"))
 ```
 
@@ -539,7 +735,7 @@ First, a quick preview of distributions:
 
 ```{r}
 plot(ocean,col="#A6BBFF",xlim=xlim*1.1,ylim=ylim*1.1)
-points(data[,c('Long','Lat')],col=as.factor(data$SciName),pch=20)
+points(data[,c('Long','Lat')],col=as.factor(data$Species),pch=20)
 ```
 
 ```{r}
@@ -562,213 +758,5 @@ env_vals=raster::extract(x=y,y=coords)
 data=cbind(data,env_vals)
 
 write_csv(data,paste0(filepath,"env_extracts.csv"))
-```
-
-# Ecological Niche Modeling
-
-Using the pipeline of MVEs, we can create niche models for all of these species.
-
-Define functions.
-
-```{r}
-data=read_csv(paste0(filepath,"env_extracts.csv"))
-```
-
-
-```{r}
-#MAJA function
-maja=function(p,m,s)((p-m)%*%s%*%t(p-m))^0.5
-
-#Quantile function
-##Double check function? divide by 1 is 1...
-##changed to 4, for quantiles
-NDquantil=function(nD,level){
-  return(round(nD*level))
-}
-```
-
-```{r,eval=F,echo=F}
-ssp="Dicrurus atactus"
-ssp.text="Dicrurus_atactus"
-data=data
-model_files=env_layers
-```
-```{r}
-# altered to fit this dataset; needs more tinkering to be function.
-
-ssp.plot=function(ssp,ssp.text,data,model_files){
-  y=stack(model_files)
-  
-  vals=data%>%
-    filter(Species==ssp)%>%
-    # remove character fields
-    dplyr::select(-Species,-Subspecies,
-                  # remove coordinates
-                  -Long,-Lat,-Source)%>%
-                  # remove extraneous ENVIREM
-                  # not needed for now
-                  #-`current_2-5arcmin_tri`,
-                  #-`current_2-5arcmin_continentality`,
-                  #-`current_2-5arcmin_growingDegDays0`,
-                  #-`current_2-5arcmin_growingDegDays5`,
-                  #-`current_2-5arcmin_maxTempColdest`,
-                  #-`current_2-5arcmin_monthCountByTemp10`,
-                  #-`current_2-5arcmin_PETColdestQuarter`,
-                  #-`current_2-5arcmin_PETseasonality`,
-                  #-`current_2-5arcmin_thermicityIndex`)%>%
-    # remove NA values
-    na.omit()%>%
-    # get unique - presence only for each site
-    # uniform representation across presences
-    unique()
-  
-  coords.vals=data%>%
-    filter(Species==ssp)%>%
-    # remove character fields
-    dplyr::select(Long,Lat)%>%
-    # get unique - presence only for each site
-    # uniform representation across presences
-    unique()
-  
-  n1=NDquantil(nrow(vals),0.9)
-
-  mve1=cov.mve(vals,quantile.use=n1)
-
-  nc=ncell(y)
-  
-  # these specific files are divisible by 4
-  
-  # break up into four sections
-  
-  mu1=matrix(mve1$center,nrow=1)
-  s1=mve1$cov
-  invs1=solve(s1)
-
-  # break up over giant raster
-  
-  mu2=as.matrix(mu1)
-  invs2=as.matrix(invs1)
-  
-  dT1=matrix(0,ncol=1,nrow=nc)
-  
-  for(ii in 1:8){
-    index=((1:(nc/8))+(nc*(ii-1)))
-    # load cells
-    
-    valsT=raster::extract(x=y,
-                          y=index)
-    #Create current models
-    valsT1=as.matrix(valsT)
-    
-    for(j in 1:nrow(valsT1)){
-      dT1[j,1]=maja(valsT1[j,],mu2,invs2)
-    }
-  }
-  
-  q=raster(nrow=nrow(y),ncol=ncol(y),
-         ext=extent(y),resolution=res(y),vals=dT1)
-  setwd(paste0(filepath,'MVEs/raw_mve/'))
-  #sp1=strsplit(sp,'[.]')[[1]][1]
-  sp1=ssp.text
-  writeRaster(q,filename=sp1,format='ascii',overwrite=T)
-  plot(q)
-  
-  ext=raster::extract(x=q,y=coords.vals)
-  ext2=na.omit(ext)
-
-  #Remove the furthest 20% to reflect issues with plotting in eBird
-  #threshold based on these values
-  
-  ext2=ext2[order(ext2)]
-  cutoff=round(0.8*length(ext2))
-  ext3=ext2[1:cutoff]
-  
-  ##The following sets binary presence to everything above 1.5 sd below mean of occurrence
-  #n=max(ext2)
-  #ND=(round(n*0.95))
-  #m=c(NA,NA,NA,0,ND,1,ND,Inf,0)
-  #m=matrix(m,ncol=3,byrow=T)
-  #rc=reclassify(q,m)
-  #y2=y[which(ext>ND),]
-
-  #Everything up to 1.5 sd above the mean included
-
-  #ext2
-  sdext=sd(ext3)
-  mext=mean(ext3)
-  ND=mext+1.5*sdext
-  m=c(NA,NA,NA,0,ND,1,ND,Inf,0)
-  
-  # free memory
-  rm(valsT)
-  rm(valsT1)
-  rm(dT1)
-  rm(vals)
-  
-  #Current threshold
-  ##Used only here; heirarchical for other parts
-  
-  m=matrix(m,ncol=3,byrow=T)
-  rc=reclassify(q,m)
-  
-  # ensure there is data for writing later
-  #y2=y[which(ext>ND),]
-
-  #Create color threshold for past models
-  #color change for every standard deviation
-  
-  #New threshold on current conditions, then hierarchical
-  #Created here, executed further down
-  
-  m2=m
-  
-  m=c(NA,NA,NA,
-      0,(mext+(1.5*sdext)),1,
-      (mext+(1.5*sdext)),(mext+(3*sdext)),2,
-      (mext+(3*sdext)),(mext+(6*sdext)),3,
-      (mext+(6*sdext)),(mext+(12*sdext)),4,
-      (mext+(12*sdext)),(mext+(24*sdext)),5,
-      (mext+(24*sdext)),Inf,6)
-  
-  m=matrix(m,ncol=3,byrow=T)
-  
-  species=ssp.text
-
-  #if(nrow(y2)!=0){
-    #setwd(paste0(filepath,"MVEs/threshold_mve/"))
-    #write.csv(y2,file=paste0(species,'_out.csv'),quote=F,row.names=F)
-  #}
-  pathway=paste0(filepath,"MVEs/threshold_mve/",
-                 species,".asc",sep="")
-  writeRaster(rc,pathway,overwrite=T)
-  
-  xlim=c(min(coords.vals$Long)-4,
-         max(coords.vals$Long)+4)
-  ylim=c(min(coords.vals$Lat)-4,
-         max(coords.vals$Lat)+4)
-  
-  plot(rc,xlim=xlim,ylim=ylim)
-  points(coords.vals,pch=19,col="black")
-
-  #threshold classify tier
-  thresh=reclassify(q,m)
-  pathway=paste0(filepath,"MVEs/threshold_mve/",
-                 species,"-tier.asc",sep="")
-  writeRaster(thresh,pathway,overwrite=T)
-  plot(thresh,
-       xlim=xlim,ylim=ylim)
-  rm(thresh)
-  
-  #Create color bands of how far it is from center
-  
-  ### For now, no past climate models.
-}
-```
-
-```{r,eval=F}
-ssp.plot(ssp = "Dicrurus atactus",
-         ssp.text = "Dicrurus_atactus",
-         data=data,
-         model_files = env_layers)
 ```
 
