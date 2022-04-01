@@ -355,7 +355,7 @@ land=readOGR(paste0(gis,'ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp')
 species_viewer=function(species,land){
   data.subset=data%>%
     filter(Species==species)%>%
-    dplyr::select(Long,Lat)
+    dplyr::select(Long,Lat,Source)
   
   paste0(gsub(" ","_",species),".asc")
   
@@ -367,14 +367,15 @@ species_viewer=function(species,land){
                   paste0(gsub(" ","_",species),".asc")))
   
   plot(x,main=species)
-  points(data.subset,pch=19)
+  points(data.subset[,c("Long","Lat")],pch=19)
   
   #threshold second
   x=raster(paste0(filepath,"MVEs/threshold_mve/",
                   paste0(gsub(" ","_",species),".asc")))
   
   plot(x,main=species)
-  points(data.subset,pch=20)
+  points(data.subset[,c("Long","Lat")],pch=20,
+         col=as.factor(data.subset$Source))
   
   # limit to dispersal area
   x2=mask(x,shp_file)
@@ -385,7 +386,8 @@ species_viewer=function(species,land){
   
   plot(x,main=species)
   plot(land,add=T)
-  points(data.subset,pch=20)
+  points(data.subset[,c("Long","Lat")],pch=20,
+         col=as.factor(data.subset$Source))
 }
 ```
 
